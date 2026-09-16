@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bfcache が効かない理由 — notes</title>
+<meta name="description" content="戻る/進むの履歴移動なのに bfcache が発動しないケースを、ブラウザ別判定つきで整理したチェックリスト。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow"><a href="../">notes</a> / bfcache diagnostics</p>
+    <h1>bfcache が効かない理由</h1>
+    <p class="lede">戻る／進むの操作自体は正しく行われているのに、ページが復元されず再読み込みになるときのチェックリスト。ブラウザごとの判定と、同じ端末でも人によって差が出る要因をまとめています。</p>
+    <div class="premise">
+      <span class="tag">前提</span>
+      <p>同一タブ内の履歴移動（戻る／進むボタン、<code>history.back()</code>）であり、ページのロードは完了している。この条件を満たさない遷移はそもそも bfcache の対象外です。</p>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="chip is-block">ブロック</span>復元されない</span>
+      <span class="legend-item"><span class="chip is-cond">条件付き</span>バージョン・設定により変動</span>
+      <span class="legend-item"><span class="chip is-ok">影響なし</span>復元される</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <h2>ページ自身の設定によるもの</h2>
+      <p>サーバーのレスポンスヘッダーとページのコードで決まる要因。ここが原因なら全ユーザーで一様に発動しません。</p>
+    </div>
+    <div class="matrix-scroll">
+      <div class="matrix">
+        <div class="row head">
+          <span>要因</span>
+          <span class="browser">Chrome</span>
+          <span class="browser">Safari</span>
+          <span class="browser">Firefox</span>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name"><code>Cache-Control: no-store</code></span>
+            <span class="detail">最も遭遇率が高い原因。ログイン後のページや動的生成ページで付きがち。Chrome は no-store でも bfcache に入れる挙動を段階展開中ですが、HTTPOnly Cookie が変化すると破棄されます。</span>
+          </div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name"><code>unload</code> イベントリスナー</span>
+            <span class="detail">Android Chrome は以前から許容。デスクトップ Chrome も 115 以降で段階的に許容へ移行したため、<strong>同じ Chrome でもユーザーによって結果が分かれます</strong>。Safari / Firefox は依然ブロック。</span>
+          </div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name"><code>window.opener</code> の参照が残っている</span>
+            <span class="detail"><code>window.open()</code> や <code>target="_blank"</code>（rel 指定なし）で開かれたページ。開いた側との参照が切れていないと対象外になります。</span>
+          </div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">クロスオリジン iframe 側の事情</span>
+            <span class="detail">埋め込んだ広告・計測・チャット系 iframe が <code>unload</code> や接続を保持していると、親ページごと対象外になります。自社ページを直しても直らない場合はここを疑います。</span>
+          </div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">2xx 以外のレスポンスで表示されたページ</span>
+            <span class="detail">エラーページやリダイレクト直後のドキュメントはキャッシュ対象から外れることがあります。</span>
+          </div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>離脱時に生きていたリソース</h2>
+      <p>「戻る」直前のページ状態で決まる要因。同じページでも操作内容によって発動したりしなかったりします。</p>
+    </div>
+    <div class="matrix-scroll">
+      <div class="matrix">
+        <div class="row head">
+          <span>要因</span>
+          <span class="browser">Chrome</span>
+          <span class="browser">Safari</span>
+          <span class="browser">Firefox</span>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">カメラ・マイク・センサー類の使用中</span>
+            <span class="detail">MediaStream、WebUSB / Serial / HID / Bluetooth、WebAuthn の処理中。どのブラウザでも確実に対象外です。</span>
+          </div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">通知などの許可ダイアログを表示中</span>
+            <span class="detail">Notification や Geolocation の許可プロンプトが開いたまま離脱したケース。</span>
+          </div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">IndexedDB トランザクション・Web Locks の保持中</span>
+            <span class="detail">未完了のトランザクションやロックを掴んだまま離脱すると対象外。処理を確実に閉じる実装が必要です。</span>
+          </div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">WebSocket / WebRTC 接続が開いたまま</span>
+            <span class="detail">Chrome は接続を切ったうえでキャッシュに入れる方向へ変わりつつあり、バージョン差が大きい部分。チャットツールや常時接続系を載せているページで差が出ます。</span>
+          </div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">進行中の fetch / XHR</span>
+            <span class="detail">レスポンス待ちのリクエストを残したまま離脱したケース。Chrome は保留のままキャッシュする実装に寄っています。</span>
+          </div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">AudioContext / 音声合成の再生中</span>
+            <span class="detail">再生中の音声リソースを保持しているページ。動画プレイヤーや読み上げ機能を持つページが該当します。</span>
+          </div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>ブラウザ・端末の環境によるもの</h2>
+      <p>コード側では制御できない領域。<strong>「同じ PC なのに人によって発動しない」の答えはほぼここにあります。</strong></p>
+    </div>
+    <div class="matrix-scroll">
+      <div class="matrix">
+        <div class="row head">
+          <span>要因</span>
+          <span class="browser">Chrome</span>
+          <span class="browser">Safari</span>
+          <span class="browser">Firefox</span>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">Chrome の段階展開（Field Trial）</span>
+            <span class="detail">Chrome は新挙動を全ユーザー一斉ではなく数パーセント単位で有効化します。no-store 対応や unload 緩和がまさにこれで、<strong>同じバージョン・同じ OS でも有効な人と無効な人が同時に存在します</strong>。</span>
+          </div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-ok">影響なし</span></div>
+          <div class="verdict"><span class="chip is-ok">影響なし</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">拡張機能の干渉</span>
+            <span class="detail">コンテンツスクリプトが <code>unload</code> を挿入したり、<code>webRequest</code> のブロッキング処理を使う拡張が入っていると個別に無効化されます。PC で個人差が出る最大の要因。</span>
+          </div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">メモリ不足・タブの開きすぎ</span>
+            <span class="detail">bfcache はページをメモリに丸ごと保持するため、メモリ圧迫時には保存済みエントリが破棄されます。メモリセーバー有効時や低スペック Android 端末でも起きやすい。</span>
+          </div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">保持期限・エントリ数の上限</span>
+            <span class="detail">Chrome は約 3 分・最大 6 エントリで失効します。遷移先で数分間よそ見してから戻ると復元されません。Safari は保持時間が長め、Firefox は別基準です。</span>
+          </div>
+          <div class="verdict"><span class="chip is-block">ブロック</span></div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cause">
+            <span class="name">エンジンごとの積極性の差</span>
+            <span class="detail">効きやすさは Safari（iOS / macOS）＞ Android Chrome ＞ デスクトップ Chrome の順。デスクトップ Chrome が最も条件が厳しく、iOS では他ブラウザも WebKit なので Safari と同じ挙動になります。</span>
+          </div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+          <div class="verdict"><span class="chip is-ok">影響なし</span></div>
+          <div class="verdict"><span class="chip is-cond">条件付き</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>ブロックしないもの（よくある誤解）</h2>
+      <p>原因として疑われがちですが、実際には bfcache を妨げません。ここを直しても状況は変わらないので調査対象から外して構いません。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">beforeunload</span>
+        <span class="detail">離脱確認ダイアログを出すリスナー。<code>unload</code> と混同されがちですが、bfcache はブロックしません。</span>
+      </li>
+      <li>
+        <span class="name">pagehide / visibilitychange</span>
+        <span class="detail">むしろ <code>unload</code> の代替として推奨されている書き方。計測処理はこちらへ寄せるのが正解です。</span>
+      </li>
+      <li>
+        <span class="name">Service Worker</span>
+        <span class="detail">制御下にあること自体は問題ありません。復元中に SW が更新された場合のみ破棄されます。</span>
+      </li>
+      <li>
+        <span class="name">sessionStorage / localStorage</span>
+        <span class="detail">読み書きの有無は判定に影響しません。復元時も内容はそのまま維持されます。</span>
+      </li>
+      <li>
+        <span class="name">setTimeout / setInterval</span>
+        <span class="detail">タイマーは破棄されず凍結され、復元時に再開します。残っていてもブロック要因にはなりません。</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>原因を特定する手順</h2>
+      <p>ブラウザが理由を直接教えてくれるので、推測より先に API とツールで確定させるのが最短です。</p>
+    </div>
+    <ol class="steps">
+      <li>
+        <div>
+          <span class="name">戻った先のページで notRestoredReasons を読む</span>
+          <span class="detail">復元されなかった理由が構造化データで返ります。実ユーザー環境での調査にはこれが最も確実です。</span>
+          <pre><code>performance.getEntriesByType('navigation')[0].notRestoredReasons</code></pre>
+        </div>
+      </li>
+      <li>
+        <div>
+          <span class="name">DevTools の bfcache テストを実行する</span>
+          <span class="detail">Chrome の Application → Back/forward cache → テスト実行。実際に離脱・復帰を再現して、阻害要因を項目名で一覧表示してくれます。</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <span class="name">レスポンスヘッダーの Cache-Control を確認する</span>
+          <span class="detail">Network タブでドキュメント自身のレスポンスを開き、<code>no-store</code> が付いていないか確認します。付いていれば Safari / Firefox では確定でアウト。</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <span class="name">拡張機能を切って、シークレットウィンドウで再現する</span>
+          <span class="detail">個人差の切り分け用。拡張なしで発動するなら原因は端末環境側、それでも発動しないならページ側の要因です。</span>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <footer>
+    判定は 2026 年 9 月時点の各ブラウザの挙動に基づく整理です。Chrome の「条件付き」項目は段階展開の対象で、同一バージョン内でも差が出ます。実環境での確認は必ず notRestoredReasons で行ってください。
+  </footer>
+
+</div>
+
+</body>
+</html>
