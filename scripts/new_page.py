@@ -18,7 +18,8 @@ import secrets
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BASE_URL = "https://ktgwshota.github.io/notes"
+PAGES_DIR = ROOT / "pages"
+BASE_URL = "https://ktgwshota.github.io/notes/pages"
 ID_BYTES = 4
 
 TEMPLATE = """<!doctype html>
@@ -36,7 +37,7 @@ TEMPLATE = """<!doctype html>
 <meta property="og:url" content="{url}">
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
-<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../../assets/style.css">
 </head>
 <body>
 
@@ -70,7 +71,7 @@ def generate_id() -> str:
     """既存ページと衝突しない ID を返す。"""
     while True:
         page_id = secrets.token_hex(ID_BYTES)
-        if not (ROOT / page_id).exists():
+        if not (PAGES_DIR / page_id).exists():
             return page_id
 
 
@@ -83,8 +84,8 @@ def main() -> int:
     args = parser.parse_args()
 
     page_id = generate_id()
-    directory = ROOT / page_id
-    directory.mkdir()
+    directory = PAGES_DIR / page_id
+    directory.mkdir(parents=True)
 
     (directory / "index.html").write_text(
         TEMPLATE.format(
@@ -98,7 +99,7 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print(f"作成しました: {page_id}/index.html")
+    print(f"作成しました: pages/{page_id}/index.html")
     print(f"公開 URL:     {BASE_URL}/{page_id}/")
     print("公開可否チェックを済ませてから push してください。")
     return 0

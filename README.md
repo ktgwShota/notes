@@ -45,16 +45,16 @@ push する前に必ず全文を走査してください。以下が 1 つでも
 python3 scripts/new_page.py "ページタイトル" --description "要約" --tags browser,performance
 ```
 
-生成された `<id>/index.html` の中身を書き、公開可否チェックを済ませて main に push します。反映まで 30 秒〜2 分です。
+生成された `pages/<id>/index.html` の中身を書き、公開可否チェックを済ませて main に push します。反映まで 30 秒〜2 分です。
 
 `--description` は一覧とリンクプレビューの両方に出るので、1 文で内容が分かるように書きます。
 
 ## パーマリンク
 
-URL は `https://ktgwshota.github.io/notes/<id>/` の形式で、`<id>` はランダムな 8 桁の 16 進数です。意味のある名前は付けません。
+URL は `https://ktgwshota.github.io/notes/pages/<id>/` の形式で、`<id>` はランダムな 8 桁の 16 進数です。意味のある名前は付けません。
 
 - URL の可読性に価値がない。回遊されず、常に個別の URL を直接渡すため
-- トピック名を slug にすると、同じテーマの 2 枚目が置けなくなる（`/bfcache/` を使うと bfcache の別の話を置けない）
+- トピック名を slug にすると、同じテーマの 2 枚目が置けなくなる（`/pages/bfcache/` を使うと bfcache の別の話を置けない）
 - ID を機械が決めることで、命名を考える工程そのものがなくなる
 
 共有相手がリンク先を判断する手がかりは OGP が担います。`new_page.py` が `og:title` と `og:description` を埋めるので、Slack に貼るとタイトルと要約がプレビュー表示されます。
@@ -74,11 +74,14 @@ python3 scripts/build_index.py
 ```
 .
 ├── index.html               一覧（自動生成・手で編集しない）
+├── pages/<id>/index.html    ページ本体
 ├── assets/style.css         全ページで共有するスタイル
-├── scripts/new_page.py      ページの雛形を作る
-├── scripts/build_index.py   一覧を生成する
-└── <id>/index.html          ページ本体
+└── scripts/
+    ├── new_page.py          ページの雛形を作る
+    └── build_index.py       一覧を生成する
 ```
+
+ページはすべて `pages/` の下に置きます。リポジトリのルートが ID のディレクトリで埋まらないようにするためです。
 
 ## スタイル
 
