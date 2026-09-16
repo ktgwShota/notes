@@ -38,19 +38,36 @@
 
 ## 記事の追加手順
 
-1. ルートにディレクトリを 1 つ作り、その中に `index.html` を置く（例: `bfcache/index.html`）
-2. `<link rel="stylesheet" href="../assets/style.css">` を読み込む
-3. ルートの `index.html` の一覧に 1 件追加する
-4. **公開可否チェックを実施する**
-5. main に push すると数十秒〜2 分で反映される
+1. ルートにディレクトリを 1 つ作り、その中に `index.html` を置く
+2. `<head>` に以下を書く（この 4 つが一覧の生成元になります）
+
+   ```html
+   <title>記事タイトル — notes</title>
+   <meta name="description" content="一覧に出す要約">
+   <meta name="date" content="2026-09-16">
+   <meta name="tags" content="browser,performance">
+   <link rel="stylesheet" href="../assets/style.css">
+   ```
+
+3. **公開可否チェックを実施する**
+4. main に push する
+
+トップページの記事一覧は **push 時に GitHub Actions が自動生成** します（[build-index.yml](.github/workflows/build-index.yml)）。`index.html` を手で編集する必要はありません。日付の降順で並びます。
+
+手元で先に確認したい場合はこれを実行します。
+
+```
+python3 scripts/build_index.py
+```
 
 ## 構成
 
 ```
 .
-├── index.html          記事一覧
-├── assets/style.css    全記事で共有するスタイル
-└── <slug>/index.html   記事本体
+├── index.html               記事一覧（自動生成・手で編集しない）
+├── assets/style.css         全記事で共有するスタイル
+├── scripts/build_index.py   一覧の生成スクリプト
+└── <slug>/index.html        記事本体
 ```
 
 スタイルは `assets/style.css` に集約しています。色はすべて CSS 変数で定義し、ライト／ダーク両方のテーマに対応済みです。記事側で色を直接書かず、変数を使ってください。
