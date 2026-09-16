@@ -1,28 +1,36 @@
 #!/usr/bin/env python3
-"""pages/ 配下を走査して、トップページの一覧を再生成する。
+"""公開用のサイトを _site/ に組み立てる。
 
-各ページの <head> から以下を読み取る:
-  <title>            ページタイトル（末尾の " — notes" は除去）
+リポジトリ上はページを pages/ にまとめておき、公開時はルート直下へ展開する。
+    リポジトリ        公開後
+    pages/<id>/  →   /<id>/
+    assets/      →   /assets/
+    templates/index.html + 各ページのメタ情報  →  /index.html
+
+各ページの <head> から以下を読み取って一覧を組み立てる:
+  <title>                    ページタイトル（末尾の " — notes" は除去）
   <meta name="description">  一覧に出す要約
   <meta name="date">         公開日（YYYY-MM-DD）
   <meta name="tags">         カンマ区切りのタグ（任意）
-
-index.html の ENTRIES:START / ENTRIES:END マーカーの間を書き換える。
 """
 
 from __future__ import annotations
 
 import html
 import re
+import shutil
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-INDEX = ROOT / "index.html"
 PAGES_DIR = ROOT / "pages"
+ASSETS_DIR = ROOT / "assets"
+TEMPLATE = ROOT / "templates" / "index.html"
+OUT_DIR = ROOT / "_site"
 START = "<!-- ENTRIES:START -->"
 END = "<!-- ENTRIES:END -->"
 TITLE_SUFFIX = " — notes"
+INDENT = " " * 6
 
 
 def extract_meta(source: str, name: str) -> str:
@@ -48,7 +56,6 @@ def collect_pages() -> list[dict[str, object]]:
     pages = []
     for path in sorted(PAGES_DIR.glob("*/index.html")):
         page_id = path.parent.name
-
         source = path.read_text(encoding="utf-8")
         title = extract_title(source)
         date = extract_meta(source, "date")
@@ -69,58 +76,69 @@ def collect_pages() -> list[dict[str, object]]:
         )
 
     # 新しいページを先頭に。同日の場合は ID で安定させる
-    return sorted(pages, key=lambda a: (a["date"], a["id"]), reverse=True)
+    return sorted(pages, key=lambda p: (p["date"], p["id"]), reverse=True)
 
 
-def render(pages: list[dict[str, object]]) -> str:
+def render_entries(pages: list[dict[str, object]]) -> str:
     if not pages:
-        return '      <li><span class="summary">ページはまだありません。</span></li>'
+        return f'{INDENT}<li><span class="summary">ページはまだありません。</span></li>'
 
     blocks = []
     for page in pages:
         lines = [
-            "      <li>",
-            f'        <a href="pages/{page["id"]}/">',
-            f'          <span class="title">{html.escape(str(page["title"]))}</span>',
-            f'          <span class="date">{html.escape(str(page["date"]))}</span>',
+            f"{INDENT}<li>",
+            f'{INDENT}  <a href="{page["id"]}/">',
+            f'{INDENT}    <span class="title">{html.escape(str(page["title"]))}</span>',
+            f'{INDENT}    <span class="date">{html.escape(str(page["date"]))}</span>',
         ]
         if page["summary"]:
             lines.append(
-                f'          <span class="summary">{html.escape(str(page["summary"]))}</span>'
+                f'{INDENT}    <span class="summary">{html.escape(str(page["summary"]))}</span>'
             )
         if page["tags"]:
             pills = "".join(
                 f'<span class="tag-pill">{html.escape(t)}</span>'
                 for t in page["tags"]  # type: ignore[union-attr]
             )
-            lines.append(f'          <span class="tags">{pills}</span>')
-        lines += ["        </a>", "      </li>"]
+            lines.append(f'{INDENT}    <span class="tags">{pills}</span>')
+        lines += [f"{INDENT}  </a>", f"{INDENT}</li>"]
         blocks.append("\n".join(lines))
 
     return "\n".join(blocks)
 
 
-def main() -> int:
-    source = INDEX.read_text(encoding="utf-8")
+def build_index(pages: list[dict[str, object]]) -> str:
+    source = TEMPLATE.read_text(encoding="utf-8")
     if START not in source or END not in source:
-        raise SystemExit(f"エラー: index.html に {START} / {END} が見つかりません")
+        raise SystemExit(f"エラー: {TEMPLATE} に {START} / {END} が見つかりません")
 
-    pages = collect_pages()
-    updated = re.sub(
+    return re.sub(
         re.escape(START) + r".*?" + re.escape(END),
-        f"{START}\n{render(pages)}\n{' ' * 6}{END}",
+        f"{START}\n{render_entries(pages)}\n{INDENT}{END}",
         source,
         flags=re.DOTALL,
     )
 
-    if updated == source:
-        print(f"変更なし（ページ {len(pages)} 件）")
-        return 0
 
-    INDEX.write_text(updated, encoding="utf-8")
-    print(f"一覧を更新しました（{len(pages)} 件）")
+def main() -> int:
+    if OUT_DIR.exists():
+        shutil.rmtree(OUT_DIR)
+    OUT_DIR.mkdir()
+
+    pages = collect_pages()
+
+    # ページはルート直下へ展開する（URL に pages/ を含めない）
     for page in pages:
-        print(f"  {page['date']}  {page['id']}  {page['title']}")
+        shutil.copytree(PAGES_DIR / str(page["id"]), OUT_DIR / str(page["id"]))
+
+    if ASSETS_DIR.exists():
+        shutil.copytree(ASSETS_DIR, OUT_DIR / "assets")
+
+    (OUT_DIR / "index.html").write_text(build_index(pages), encoding="utf-8")
+
+    print(f"_site/ を組み立てました（ページ {len(pages)} 件）")
+    for page in pages:
+        print(f"  {page['date']}  /{page['id']}/  {page['title']}")
     return 0
 
 

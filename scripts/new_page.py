@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PAGES_DIR = ROOT / "pages"
-BASE_URL = "https://ktgwshota.github.io/notes/pages"
+BASE_URL = "https://ktgwshota.github.io/notes"
 ID_BYTES = 4
 
 TEMPLATE = """<!doctype html>
@@ -37,7 +37,7 @@ TEMPLATE = """<!doctype html>
 <meta property="og:url" content="{url}">
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
-<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
 
