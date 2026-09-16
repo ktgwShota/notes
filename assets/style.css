@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------
    notes — 共有スタイルシート
-   記事を追加するときはこのファイルのトークンとコンポーネントを使う。
-   記事固有のスタイルが必要な場合のみ、記事側に <style> を書く。
+   ページを追加するときはこのファイルのトークンとコンポーネントを使う。
+   ページ固有のスタイルが必要な場合のみ、ページ側に <style> を書く。
    --------------------------------------------------------------- */
 
 :root {
@@ -365,7 +365,93 @@ h2 {
   line-height: 1.7;
 }
 
-/* ---------- 記事一覧（トップページ） ---------- */
+/* ---------- トップページ（索引） ---------- */
+
+.index-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.9rem;
+}
+
+.index-head h1 {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  line-height: 1.6;
+}
+
+.index-head .count {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 絞り込み ---------- */
+
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.search {
+  width: 100%;
+  font-family: var(--body);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.7rem 0.9rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search::placeholder { color: var(--ink-3); }
+
+.search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tag-pill {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  padding: 0.28rem 0.5rem;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tag-pill:hover { border-color: var(--accent); }
+
+.tag-pill[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+/* ---------- 一覧 ---------- */
 
 .entries {
   list-style: none;
@@ -380,29 +466,55 @@ h2 {
   overflow: hidden;
 }
 
-.entries li { background: var(--surface); }
-
-.entries a {
+.entry {
+  background: var(--surface);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.5rem 1.5rem;
+  gap: 0.4rem 1.25rem;
+  padding: 1rem 1.25rem;
   align-items: baseline;
-  padding: 1.15rem 1.25rem;
+}
+
+.entry[hidden] { display: none; }
+
+.entry-link {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
   text-decoration: none;
   color: inherit;
 }
 
-.entries a:hover { background: var(--surface-2); }
+.entry-link:hover .title {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
-.entries .title {
+.entry .title {
   font-family: var(--display);
-  font-size: 1.125rem;
+  font-size: 1.0625rem;
   font-weight: 600;
-  color: var(--ink);
   line-height: 1.5;
 }
 
-.entries .date {
+.entry .summary {
+  font-size: 0.8438rem;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+
+.entry-side {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.entry .date {
   font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--ink-3);
@@ -410,28 +522,65 @@ h2 {
   white-space: nowrap;
 }
 
-.entries .summary {
-  grid-column: 1 / -1;
-  font-size: 0.875rem;
-  color: var(--ink-2);
-  line-height: 1.7;
-}
-
-.entries .tags {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.tag-pill {
+.copy {
   font-family: var(--mono);
   font-size: 0.6875rem;
   letter-spacing: 0.04em;
-  color: var(--accent);
-  background: var(--accent-soft);
-  padding: 0.24rem 0.45rem;
+  line-height: 1.4;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
   border-radius: 2px;
+  padding: 0.32rem 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.copy.is-done {
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: var(--ok);
+}
+
+.entry-tags {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-top: 0.15rem;
+}
+
+.empty {
+  background: var(--surface);
+  padding: 2.5rem 1.25rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--ink-3);
+}
+
+.empty[hidden] { display: none; }
+
+button:focus-visible,
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .entry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .entry-side {
+    grid-column: 1;
+    grid-row: 3;
+    justify-content: space-between;
+  }
+
+  .entry-tags { grid-row: 2; }
 }
 
 /* ---------- コード ---------- */

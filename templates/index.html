@@ -12,26 +12,24 @@
 
 <div class="wrap">
 
-  <header class="masthead">
-    <p class="eyebrow">notes</p>
-    <h1>調べたことを置いておく場所</h1>
-    <p class="lede">仕事で調べて分かったことのうち、他の人にもそのまま渡せる形になったものをまとめています。リンクを送れば誰でも読めます。</p>
+  <header class="index-head">
+    <h1>notes</h1>
+    <p class="count" id="count"></p>
   </header>
 
   <section>
-    <!-- この一覧は scripts/build_index.py が自動生成します。手で編集しないでください。 -->
-    <ul class="entries">
+    <div class="toolbar">
+      <input type="search" id="search" class="search" placeholder="タイトル・要約・タグで絞り込む（/ キーで移動）" autocomplete="off" spellcheck="false">
+      <div class="tag-filter" id="tag-filter"></div>
+    </div>
+
+    <!-- 一覧は scripts/build_site.py がビルド時に流し込みます。 -->
+    <ul class="entries" id="entries">
       <!-- ENTRIES:START -->
-      <li>
-        <a href="pages/92ad0da3/">
-          <span class="title">bfcache が効かない理由</span>
-          <span class="date">2026-09-16</span>
-          <span class="summary">戻る/進むの履歴移動なのに bfcache が発動しないケースを、ブラウザ別判定つきで整理したチェックリスト。</span>
-          <span class="tags"><span class="tag-pill">browser</span><span class="tag-pill">performance</span></span>
-        </a>
-      </li>
       <!-- ENTRIES:END -->
     </ul>
+
+    <p class="empty" id="empty" hidden>該当するページはありません。</p>
   </section>
 
   <footer>
@@ -39,6 +37,129 @@
   </footer>
 
 </div>
+
+<script>
+(() => {
+  const entries = [...document.querySelectorAll('.entry')]
+  const search = document.getElementById('search')
+  const tagFilter = document.getElementById('tag-filter')
+  const count = document.getElementById('count')
+  const empty = document.getElementById('empty')
+  const activeTags = new Set()
+
+  // タグの出どころは各ページのメタ情報だけなので、一覧の DOM から組み立てる
+  const buildTagFilter = () => {
+    const frequency = new Map()
+    for (const entry of entries) {
+      for (const tag of entry.dataset.tags.split(' ').filter(Boolean)) {
+        frequency.set(tag, (frequency.get(tag) ?? 0) + 1)
+      }
+    }
+
+    const sorted = [...frequency.entries()].sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+    )
+
+    for (const [tag] of sorted) {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'tag-pill'
+      button.textContent = tag
+      button.dataset.tag = tag
+      button.setAttribute('aria-pressed', 'false')
+      tagFilter.append(button)
+    }
+  }
+
+  const matches = (entry, query) => {
+    if (query && !entry.dataset.search.includes(query)) return false
+    const tags = entry.dataset.tags.split(' ')
+    return [...activeTags].every((tag) => tags.includes(tag))
+  }
+
+  const apply = () => {
+    const query = search.value.trim().toLowerCase()
+    let visible = 0
+
+    for (const entry of entries) {
+      const shown = matches(entry, query)
+      entry.hidden = !shown
+      if (shown) visible += 1
+    }
+
+    const isFiltered = query !== '' || activeTags.size > 0
+    count.textContent = isFiltered
+      ? `${visible} / ${entries.length} 件`
+      : `${entries.length} 件`
+    empty.hidden = visible > 0
+  }
+
+  const toggleTag = (button) => {
+    const tag = button.dataset.tag
+    const nextPressed = !activeTags.has(tag)
+
+    if (nextPressed) {
+      activeTags.add(tag)
+    } else {
+      activeTags.delete(tag)
+    }
+
+    // 絞り込み欄と一覧の同じタグは状態を揃える
+    for (const pill of document.querySelectorAll(`.tag-pill[data-tag="${tag}"]`)) {
+      pill.setAttribute('aria-pressed', String(nextPressed))
+    }
+    apply()
+  }
+
+  const copyLink = async (button) => {
+    const url = button.closest('.entry').querySelector('.entry-link').href
+
+    try {
+      await navigator.clipboard.writeText(url)
+      button.classList.add('is-done')
+      button.textContent = 'コピーしました'
+    } catch {
+      button.textContent = 'コピーできません'
+    }
+
+    setTimeout(() => {
+      button.classList.remove('is-done')
+      button.textContent = 'リンクをコピー'
+    }, 1600)
+  }
+
+  document.addEventListener('click', (event) => {
+    const tag = event.target.closest('.tag-pill')
+    if (tag) {
+      toggleTag(tag)
+      return
+    }
+
+    const copy = event.target.closest('.copy')
+    if (copy) {
+      copyLink(copy)
+    }
+  })
+
+  search.addEventListener('input', apply)
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === '/' && document.activeElement !== search) {
+      event.preventDefault()
+      search.focus()
+      return
+    }
+
+    if (event.key === 'Escape' && document.activeElement === search) {
+      search.value = ''
+      apply()
+    }
+  })
+
+  buildTagFilter()
+  apply()
+})()
+</script>
 
 </body>
 </html>

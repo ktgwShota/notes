@@ -81,27 +81,39 @@ def collect_pages() -> list[dict[str, object]]:
 
 def render_entries(pages: list[dict[str, object]]) -> str:
     if not pages:
-        return f'{INDENT}<li><span class="summary">ページはまだありません。</span></li>'
+        return ""
 
     blocks = []
     for page in pages:
+        tags: list[str] = page["tags"]  # type: ignore[assignment]
+        # 絞り込みは JS が data 属性だけを見る（タイトル・要約・タグを対象にする）
+        haystack = " ".join([str(page["title"]), str(page["summary"]), *tags]).lower()
+
         lines = [
-            f"{INDENT}<li>",
-            f'{INDENT}  <a href="{page["id"]}/">',
+            f'{INDENT}<li class="entry" data-search="{html.escape(haystack)}"'
+            f' data-tags="{html.escape(" ".join(tags))}">',
+            f'{INDENT}  <a class="entry-link" href="{page["id"]}/">',
             f'{INDENT}    <span class="title">{html.escape(str(page["title"]))}</span>',
-            f'{INDENT}    <span class="date">{html.escape(str(page["date"]))}</span>',
         ]
         if page["summary"]:
             lines.append(
                 f'{INDENT}    <span class="summary">{html.escape(str(page["summary"]))}</span>'
             )
-        if page["tags"]:
+        lines += [
+            f"{INDENT}  </a>",
+            f'{INDENT}  <div class="entry-side">',
+            f'{INDENT}    <span class="date">{html.escape(str(page["date"]))}</span>',
+            f'{INDENT}    <button type="button" class="copy">リンクをコピー</button>',
+            f"{INDENT}  </div>",
+        ]
+        if tags:
             pills = "".join(
-                f'<span class="tag-pill">{html.escape(t)}</span>'
-                for t in page["tags"]  # type: ignore[union-attr]
+                f'<button type="button" class="tag-pill" data-tag="{html.escape(t)}"'
+                f' aria-pressed="false">{html.escape(t)}</button>'
+                for t in tags
             )
-            lines.append(f'{INDENT}    <span class="tags">{pills}</span>')
-        lines += [f"{INDENT}  </a>", f"{INDENT}</li>"]
+            lines.append(f'{INDENT}  <div class="entry-tags">{pills}</div>')
+        lines.append(f"{INDENT}</li>")
         blocks.append("\n".join(lines))
 
     return "\n".join(blocks)
