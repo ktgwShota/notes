@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""記事ディレクトリを走査して、トップページの記事一覧を再生成する。
+"""ページのディレクトリを走査して、トップページの一覧を再生成する。
 
-各記事の <head> から以下を読み取る:
-  <title>            記事タイトル（末尾の " — notes" は除去）
+各ページの <head> から以下を読み取る:
+  <title>            ページタイトル（末尾の " — notes" は除去）
   <meta name="description">  一覧に出す要約
   <meta name="date">         公開日（YYYY-MM-DD）
   <meta name="tags">         カンマ区切りのタグ（任意）
@@ -44,11 +44,11 @@ def extract_title(source: str) -> str:
     return title[: -len(TITLE_SUFFIX)] if title.endswith(TITLE_SUFFIX) else title
 
 
-def collect_articles() -> list[dict[str, object]]:
-    articles = []
+def collect_pages() -> list[dict[str, object]]:
+    pages = []
     for path in sorted(ROOT.glob("*/index.html")):
-        slug = path.parent.name
-        if slug in EXCLUDED_DIRS or slug.startswith("."):
+        page_id = path.parent.name
+        if page_id in EXCLUDED_DIRS or page_id.startswith("."):
             continue
 
         source = path.read_text(encoding="utf-8")
@@ -57,12 +57,12 @@ def collect_articles() -> list[dict[str, object]]:
 
         missing = [k for k, v in (("title", title), ("date", date)) if not v]
         if missing:
-            raise SystemExit(f"エラー: {slug}/index.html に {', '.join(missing)} がありません")
+            raise SystemExit(f"エラー: {page_id}/index.html に {', '.join(missing)} がありません")
 
         tags = [t.strip() for t in extract_meta(source, "tags").split(",") if t.strip()]
-        articles.append(
+        pages.append(
             {
-                "slug": slug,
+                "id": page_id,
                 "title": title,
                 "date": date,
                 "summary": extract_meta(source, "description"),
@@ -70,30 +70,30 @@ def collect_articles() -> list[dict[str, object]]:
             }
         )
 
-    # 新しい記事を先頭に。同日の場合は slug で安定させる
-    return sorted(articles, key=lambda a: (a["date"], a["slug"]), reverse=True)
+    # 新しいページを先頭に。同日の場合は ID で安定させる
+    return sorted(pages, key=lambda a: (a["date"], a["id"]), reverse=True)
 
 
-def render(articles: list[dict[str, object]]) -> str:
-    if not articles:
-        return '      <li><span class="summary">記事はまだありません。</span></li>'
+def render(pages: list[dict[str, object]]) -> str:
+    if not pages:
+        return '      <li><span class="summary">ページはまだありません。</span></li>'
 
     blocks = []
-    for article in articles:
+    for page in pages:
         lines = [
             "      <li>",
-            f'        <a href="{article["slug"]}/">',
-            f'          <span class="title">{html.escape(str(article["title"]))}</span>',
-            f'          <span class="date">{html.escape(str(article["date"]))}</span>',
+            f'        <a href="{page["id"]}/">',
+            f'          <span class="title">{html.escape(str(page["title"]))}</span>',
+            f'          <span class="date">{html.escape(str(page["date"]))}</span>',
         ]
-        if article["summary"]:
+        if page["summary"]:
             lines.append(
-                f'          <span class="summary">{html.escape(str(article["summary"]))}</span>'
+                f'          <span class="summary">{html.escape(str(page["summary"]))}</span>'
             )
-        if article["tags"]:
+        if page["tags"]:
             pills = "".join(
                 f'<span class="tag-pill">{html.escape(t)}</span>'
-                for t in article["tags"]  # type: ignore[union-attr]
+                for t in page["tags"]  # type: ignore[union-attr]
             )
             lines.append(f'          <span class="tags">{pills}</span>')
         lines += ["        </a>", "      </li>"]
@@ -107,22 +107,22 @@ def main() -> int:
     if START not in source or END not in source:
         raise SystemExit(f"エラー: index.html に {START} / {END} が見つかりません")
 
-    articles = collect_articles()
+    pages = collect_pages()
     updated = re.sub(
         re.escape(START) + r".*?" + re.escape(END),
-        f"{START}\n{render(articles)}\n{' ' * 6}{END}",
+        f"{START}\n{render(pages)}\n{' ' * 6}{END}",
         source,
         flags=re.DOTALL,
     )
 
     if updated == source:
-        print(f"変更なし（記事 {len(articles)} 件）")
+        print(f"変更なし（ページ {len(pages)} 件）")
         return 0
 
     INDEX.write_text(updated, encoding="utf-8")
-    print(f"記事一覧を更新しました（{len(articles)} 件）")
-    for article in articles:
-        print(f"  {article['date']}  {article['slug']}  {article['title']}")
+    print(f"一覧を更新しました（{len(pages)} 件）")
+    for page in pages:
+        print(f"  {page['date']}  {page['id']}  {page['title']}")
     return 0
 
 

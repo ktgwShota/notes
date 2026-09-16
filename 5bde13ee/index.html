@@ -7,6 +7,11 @@
 <meta name="description" content="戻る/進むの履歴移動なのに bfcache が発動しないケースを、ブラウザ別判定つきで整理したチェックリスト。">
 <meta name="date" content="2026-09-16">
 <meta name="tags" content="browser,performance">
+<meta property="og:type" content="article">
+<meta property="og:title" content="bfcache が効かない理由">
+<meta property="og:description" content="戻る/進むの履歴移動なのに bfcache が発動しないケースを、ブラウザ別判定つきで整理したチェックリスト。">
+<meta property="og:url" content="https://ktgwshota.github.io/notes/5bde13ee/">
+<meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
 <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -15,7 +20,7 @@
 <div class="wrap">
 
   <header class="masthead">
-    <p class="eyebrow"><a href="../">notes</a> / bfcache diagnostics</p>
+    <p class="eyebrow">bfcache diagnostics</p>
     <h1>bfcache が効かない理由</h1>
     <p class="lede">戻る／進むの操作自体は正しく行われているのに、ページが復元されず再読み込みになるときのチェックリスト。ブラウザごとの判定と、同じ端末でも人によって差が出る要因をまとめています。</p>
     <div class="premise">
