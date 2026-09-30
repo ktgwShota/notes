@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>URL エンコードを二重にかけると文字列が変わる — notes</title>
+<meta name="description" content="encodeURIComponent はエンコード済みの % もエスケープするため、二重にかけると %3A が %253A になり、比較や検索で一致しなくなる。cookie 保存を題材にした説明と検証コード。">
+<meta name="date" content="2026-09-30">
+<meta name="tags" content="javascript,browser,cookie">
+<meta property="og:type" content="article">
+<meta property="og:title" content="URL エンコードを二重にかけると文字列が変わる">
+<meta property="og:description" content="encodeURIComponent はエンコード済みの % もエスケープするため、二重にかけると %3A が %253A になり、比較や検索で一致しなくなる。cookie 保存を題材にした説明と検証コード。">
+<meta property="og:url" content="https://ktgwshota.github.io/notes/2593cf92/">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">url encoding</p>
+    <h1>URL エンコードを二重にかけると文字列が変わる</h1>
+    <p class="lede"><code>encodeURIComponent</code> は「この文字列がすでにエンコード済みか」を判定しません。<code>%</code> 自体がエスケープ対象なので、エンコード済みの文字列にもう一度かけると <code>%3A</code> は <code>%253A</code> になります。安全性は変わりませんが、値が変わるので比較や検索で一致しなくなります。</p>
+    <div class="premise">
+      <span class="tag">前提</span>
+      <p>percent-encoding（URL エンコード）の話です。<code>encodeURIComponent</code> / <code>decodeURIComponent</code> を例にしますが、同じ規則のエンコーダーなら言語を問わず同じことが起きます。</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <h2>何が起きるか</h2>
+      <p>1 回目で <code>:</code> が <code>%3A</code> になり、2 回目でその <code>%</code> が <code>%25</code> になります。</p>
+    </div>
+    <pre><code>元の文字列   https://example.com/path/あ
+1 回目       https%3A%2F%2Fexample.com%2Fpath%2F%E3%81%82
+2 回目       https%253A%252F%252Fexample.com%252Fpath%252F%25E3%2581%2582</code></pre>
+    <ul class="card-list">
+      <li>
+        <span class="name">情報は失われない</span>
+        <span class="detail">エンコードした回数だけ <code>decodeURIComponent</code> をかければ元に戻ります。2 回エンコードしたなら 2 回デコードです。</span>
+      </li>
+      <li>
+        <span class="name">回数が合わないと一致しない</span>
+        <span class="detail">読む側が「1 回エンコード済み」を前提に <code>===</code> や <code>endsWith</code> で比較すると、2 回エンコードされた値は別の文字列として扱われます。</span>
+      </li>
+      <li>
+        <span class="name">回数は値から判別できない</span>
+        <span class="detail"><code>%25E3</code> が「<code>%E3</code> を 2 回エンコードしたもの」なのか「元から <code>%25E3</code> という文字列」なのかは区別できません。書く側と読む側が回数を暗黙に共有する必要があります。</span>
+      </li>
+      <li>
+        <span class="name">サイズが膨らむ</span>
+        <span class="detail"><code>%</code> 1 文字が <code>%25</code> の 3 文字になります。エンコード済み URL は <code>%</code> だらけなので、cookie の 4KB 上限のような制約があると効いてきます。</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>cookie 保存で起きやすい形</h2>
+      <p>計測タグやセッション管理のスクリプトで、現在の URL を cookie に保存して次のページで比較するパターンを考えます。</p>
+    </div>
+    <ol class="steps">
+      <li>
+        <div>
+          <span class="name">URL を取得した時点でエンコードしておく</span>
+          <span class="detail">cookie の値には非 ASCII 文字や <code>;</code> を入れられないので、<code>encodeURIComponent(location.href)</code> を保存用の値にします。ここまでは正しい対処です。</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <span class="name">cookie 書き込みの共通関数にもエンコードを足す</span>
+          <span class="detail">「どんな値が来ても安全にしたい」という動機で、書き込み関数の中でも <code>encodeURIComponent</code> をかけるようにします。すでにエンコード済みの値が渡ってくると、ここで二重になります。</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <span class="name">読み取り側は変えない</span>
+          <span class="detail">cookie を読んで <code>endsWith(encodeURIComponent(location.href))</code> で「同じページか」を判定している処理は、<code>%3A</code> と <code>%253A</code> を比べることになり常に false になります。</span>
+        </div>
+      </li>
+    </ol>
+    <div class="premise">
+      <span class="tag">補足</span>
+      <p>ブラウザは <code>location.href</code> や <code>location.search</code> を読むとき、URL 中の非 ASCII 文字を自動で percent-encoding します。一方 <code>document.cookie</code> への書き込みでは何もエンコードしません。「URL から取った値をデコードせずに cookie に入れている」場合だけ、URL 側のエンコードに乗っかって安全になっています。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>検証コード</h2>
+      <p>Node.js でそのまま実行できます。</p>
+    </div>
+    <pre><code>const href = 'https://example.com/path/あ'
+
+// URL 取得時に 1 回エンコード
+const encodedUri = encodeURIComponent(href)
+const sessionId = 'abc123XYZ0' + encodedUri
+
+// cookie 書き込み側でもう 1 回エンコードしてしまった場合
+const writtenToCookie = encodeURIComponent(sessionId)
+
+console.log('1 回目      :', encodedUri)
+console.log('cookie の値 :', writtenToCookie)
+console.log('デコードなしで比較:', writtenToCookie.endsWith(encodedUri))
+console.log('1 回デコードして比較:', decodeURIComponent(writtenToCookie).endsWith(encodedUri))</code></pre>
+    <pre><code>1 回目      : https%3A%2F%2Fexample.com%2Fpath%2F%E3%81%82
+cookie の値 : abc123XYZ0https%253A%252F%252Fexample.com%252Fpath%252F%25E3%2581%2582
+デコードなしで比較: false
+1 回デコードして比較: true</code></pre>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>どう避けるか</h2>
+      <p>エンコードは 1 回だけ、どこでやるかを決めておく、が原則です。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">エンコードする場所を 1 箇所に決める</span>
+        <span class="detail">「値を取得した時点」か「保存する直前」のどちらかに統一します。両方でやると必ず二重になります。</span>
+      </li>
+      <li>
+        <span class="name">書き込みでエンコードするなら読み取りでデコードする</span>
+        <span class="detail">保存関数でエンコードする設計にするなら、読み取り関数で <code>decodeURIComponent</code> して対称にします。不正な <code>%</code> で <code>URIError</code> が出るので、try/catch で生の値にフォールバックしておきます。</span>
+      </li>
+      <li>
+        <span class="name">既存データとの整合を確認する</span>
+        <span class="detail">すでに保存されている値のエンコード回数が変わると、デプロイ後の最初の読み取りで一致しなくなります。cookie の有効期限内は古い形式の値が残ることを前提に影響を見積もります。</span>
+      </li>
+    </ul>
+  </section>
+
+  <footer>
+    2026-09-30 時点の内容です。
+  </footer>
+
+</div>
+
+</body>
+</html>
