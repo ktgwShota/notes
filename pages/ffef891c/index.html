@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>リダイレクト用ページで起きる DOM XSS と open redirect — notes</title>
+<meta name="description" content="クエリで受け取った遷移先 URL を new URL() に通すだけでは javascript: URL を防げず、innerHTML と location.href の両方から任意の JS が動く。">
+<meta name="date" content="2026-11-03">
+<meta name="tags" content="security,browser">
+<meta property="og:type" content="article">
+<meta property="og:title" content="リダイレクト用ページで起きる DOM XSS と open redirect">
+<meta property="og:description" content="クエリで受け取った遷移先 URL を new URL() に通すだけでは javascript: URL を防げず、innerHTML と location.href の両方から任意の JS が動く。">
+<meta property="og:url" content="https://ktgwshota.github.io/notes/ffef891c/">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">web security</p>
+    <h1>リダイレクト用ページで起きる DOM XSS と open redirect</h1>
+    <p class="lede">クエリで受け取った遷移先 URL を <code>new URL()</code> に通しただけで「URL として正しい」と扱うと、<code>javascript:</code> URL がそのまま通ります。そのページが遷移先を <code>innerHTML</code> に埋め込んだり <code>location.href</code> に代入したりしていれば、細工したリンクを踏ませるだけで、そのドメイン上で任意の JS を動かせます。</p>
+    <div class="premise">
+      <span class="tag">前提</span>
+      <p>「計測してから外部ページへ飛ばす」「数秒後に自動で遷移する」といった中継ページの話です。遷移先を <code>?redirect_url=...</code> のようなクエリで受け取り、ブラウザ側の JS だけで処理するものを想定しています。</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <h2>よくある実装</h2>
+      <p>遷移先 URL をクエリから取り、「自動で遷移しない場合はこちら」というリンクを出し、一定時間後に遷移します。</p>
+    </div>
+    <pre><code>const redirectUrl = new URL(params.get('redirect_url')).href
+
+// 自動で遷移しないとき用のリンク
+message.innerHTML = `遷移しない場合は &lt;a href="${redirectUrl}"&gt;こちら&lt;/a&gt;`
+
+// 計測が遅れても待たせすぎないよう、5 秒後に必ず遷移する
+setTimeout(() =&gt; { location.href = redirectUrl }, 5000)
+
+// 計測が終わったら、http(s) のときだけ遷移する
+if (/^https?:\/\//.test(redirectUrl)) {
+  location.href = redirectUrl
+} else {
+  showError()
+}</code></pre>
+    <p>スキームの確認はありますが、最後の分岐にしかかかっていません。リンクとタイマーには、確認前の値がそのまま渡ります。</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>何が起きるか</h2>
+      <p>同じ 1 つの値から、3 通りの問題が起きます。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">innerHTML 経由ですぐに JS が動く</span>
+        <span class="detail"><code>redirect_url=javascript:"&gt;&lt;img src=x onerror=...&gt;</code> を渡すと、<code>"</code> で <code>href</code> 属性を閉じて <code>&lt;img&gt;</code> を挿入できます。<code>onerror</code> はページを開いた瞬間に動き、クリックは要りません。</span>
+      </li>
+      <li>
+        <span class="name">タイマー経由で数秒後に JS が動く</span>
+        <span class="detail"><code>location.href = 'javascript:...'</code> はそのページの文脈で JS を実行します。エラー表示に切り替える処理があっても、<code>setTimeout</code> を解除していなければタイマーは残ったまま動きます。</span>
+      </li>
+      <li>
+        <span class="name">任意のサイトへ飛ばせる（open redirect）</span>
+        <span class="detail"><code>https://</code> で始まっていれば分岐も通るので、どこへでも遷移します。信頼されたドメインのリンクがフィッシングサイトの入口になります。</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>new URL() で防げない理由</h2>
+      <p><code>new URL()</code> は URL として解釈できるかを調べるだけです。安全な遷移先かどうかは判定しません。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">javascript: は正しい URL</span>
+        <span class="detail">URL Standard 上、<code>javascript:</code> は他のスキームと同じように有効です。例外は投げられず、<code>protocol</code> が <code>"javascript:"</code> の URL オブジェクトが返ります。</span>
+      </li>
+      <li>
+        <span class="name">スキームによってエスケープされる文字が違う</span>
+        <span class="detail"><code>https:</code> のような special scheme では、<code>href</code> にしたときパス・クエリ・フラグメントの <code>"</code> <code>&lt;</code> <code>&gt;</code> が percent-encoding されます。<code>javascript:</code> のパス部分は制御文字しかエスケープされないので、<code>"</code> <code>&lt;</code> <code>&gt;</code> がそのまま残ります。</span>
+      </li>
+    </ul>
+    <pre><code>new URL('https://example.com/a"&lt;&gt;?q="&lt;&gt;').href
+// =&gt; https://example.com/a%22%3C%3E?q=%22%3C%3E
+
+new URL('javascript:"&gt;&lt;img src=x onerror=alert(1)&gt;').href
+// =&gt; javascript:"&gt;&lt;img src=x onerror=alert(1)&gt;</code></pre>
+    <p><code>https:</code> だけを想定して試すと、<code>"</code> がエスケープされるので「属性は抜けられない」ように見えます。抜けられるのは <code>javascript:</code> のときだけなので、正常系のテストでは気づけません。</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>悪用されると何ができるか</h2>
+      <p>攻撃者がやることは、細工したリンクをメールやメッセージで送ることだけです。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">cookie を読む</span>
+        <span class="detail">親ドメイン（<code>.example.com</code>）に付いた cookie のうち、<code>HttpOnly</code> でないものは <code>document.cookie</code> で読めます。</span>
+      </li>
+      <li>
+        <span class="name">兄弟サブドメインに cookie を仕込む（cookie tossing）</span>
+        <span class="detail">静的ファイル用のサブドメインからでも、<code>Domain=.example.com</code> の cookie は書けます。管理画面など別のサブドメインに、セッション固定や CSRF トークンの上書きを仕掛けられます。</span>
+      </li>
+      <li>
+        <span class="name">信頼されたドメインで偽の画面を出す</span>
+        <span class="detail">アドレスバーは本物のドメインのままなので、ログインフォームを描画すると見分けがつきません。</span>
+      </li>
+    </ul>
+    <div class="premise">
+      <span class="tag">補足</span>
+      <p>「静的ファイルを置くだけのサブドメインだから」は安全の根拠になりません。cookie のスコープは親ドメイン単位で共有されるので、どれか 1 つのサブドメインで JS が動けば、他のサブドメインにも影響します。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>どう直すか</h2>
+      <p>入口で 1 回だけ検証し、通った値だけを後続に渡します。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">スキームとホストを許可リストで照合する</span>
+        <span class="detail"><code>protocol === 'https:'</code> に限り、<code>hostname</code> を許可リストと完全一致で比べます。前方一致や <code>includes</code> は <code>example.com.evil.test</code> のようなホストで突破されます。</span>
+      </li>
+      <li>
+        <span class="name">HTML 文字列を組み立てない</span>
+        <span class="detail"><code>createElement('a')</code> で要素を作り、<code>a.href</code> と <code>textContent</code> に代入します。属性値として扱われるので、<code>"</code> で抜ける余地がなくなります。</span>
+      </li>
+      <li>
+        <span class="name">失敗したらタイマーを止める</span>
+        <span class="detail">エラー表示に切り替えるときは <code>clearTimeout</code> します。そもそも検証に通るまでタイマーを登録しない方が確実です。</span>
+      </li>
+      <li>
+        <span class="name">CSP を付ける</span>
+        <span class="detail"><code>script-src</code> を自ドメインに絞れば、インラインのイベントハンドラーや <code>javascript:</code> URL の実行をブラウザが止めます。静的ホスティングでも、CDN のレスポンスヘッダー設定で付けられます。検証漏れがあったときの保険です。</span>
+      </li>
+    </ul>
+    <pre><code>const ALLOWED_HOSTS = ['example.com', 'www.example.com']
+
+const parseRedirectUrl = (raw) =&gt; {
+  if (raw === null) return null
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:') return null
+    if (!ALLOWED_HOSTS.includes(url.hostname)) return null
+    return url
+  } catch {
+    return null
+  }
+}
+
+const redirectUrl = parseRedirectUrl(params.get('redirect_url'))
+if (redirectUrl === null) {
+  showError()
+} else {
+  const link = document.createElement('a')
+  link.href = redirectUrl.href
+  link.textContent = 'こちら'
+  message.append('遷移しない場合は ', link)
+  setTimeout(() =&gt; { location.href = redirectUrl.href }, 5000)
+}</code></pre>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>教訓</h2>
+      <p>レビューで同じものを見逃さないための観点です。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">検証は使う場所ではなく入口に置く</span>
+        <span class="detail">値を使う場所（sink）が複数あると、どこか 1 つに検証を置いても他の経路が素通りします。検証済みの値しか存在しない状態を作れば、sink が増えても漏れません。</span>
+      </li>
+      <li>
+        <span class="name">「パースできた」と「安全」は別</span>
+        <span class="detail"><code>new URL()</code>、<code>JSON.parse</code>、型変換が成功しても、内容が想定内かは確認されていません。</span>
+      </li>
+      <li>
+        <span class="name">URL を受け取る sink を覚えておく</span>
+        <span class="detail"><code>innerHTML</code> だけでなく、<code>location.href</code>、<code>location.assign</code>、<code>window.open</code>、<code>a.href</code>、<code>iframe.src</code> も <code>javascript:</code> URL を実行します。<code>a.href</code> は HTML インジェクションは防げますが、スキームの検証はしてくれません。</span>
+      </li>
+      <li>
+        <span class="name">異常系の入力で試す</span>
+        <span class="detail">URL を受け取る箇所は、<code>https:</code> の正常系に加えて <code>javascript:</code>、<code>data:</code>、許可外のホストでも動作を確認します。</span>
+      </li>
+    </ul>
+  </section>
+
+  <footer>
+    2026-11-03 時点の内容です。
+  </footer>
+
+</div>
+
+</body>
+</html>
