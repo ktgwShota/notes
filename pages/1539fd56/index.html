@@ -81,7 +81,7 @@ const b = "谺｡縺ｮ蜃ｦ逅�"
     <ul class="card-list">
       <li>
         <span class="name">構文が壊れる</span>
-        <span class="detail">テンプレートリテラルを閉じるバッククォート。文字列が閉じなくなり、ファイル全体が構文エラーになります。</span>
+        <span class="detail">テンプレートリテラルを閉じるバッククォートと、正規表現リテラルの文字クラスを閉じる <code>]</code>。<code>/[０-９]/</code> は「９」の最後のバイトが <code>]</code> を取り込み、<code>Invalid regular expression</code> になります。どちらもファイル全体が構文エラーになります。</span>
       </li>
       <li>
         <span class="name">意味が変わる</span>
@@ -115,7 +115,7 @@ const b = "谺｡縺ｮ蜃ｦ逅�"
     </ul>
     <div class="premise">
       <span class="tag">補足</span>
-      <p><code>&lt;script charset="utf-8"&gt;</code> でも文字コードは指定できますが、埋め込む側に書いてもらう必要があり、HTML の仕様でも非推奨です。他人のサイトに配るスクリプトでは、配信側で決める方法を使います。テンプレートリテラルを使わないように書き換えても構文エラーは避けられますが、文字化けとバックスラッシュの問題は残ります。</p>
+      <p><code>&lt;script charset="utf-8"&gt;</code> でも文字コードは指定できますが、埋め込む側に書いてもらう必要があり、HTML の仕様でも非推奨です。他人のサイトに配るスクリプトでは、配信側で決める方法を使います。壊れた箇所だけをクォートの文字列連結や <code>\u{FF10}</code> のようなエスケープに書き換えても、同じ書き方が別の場所に入れば再発します。文字化けとバックスラッシュの問題も残ります。</p>
     </div>
   </section>
 
