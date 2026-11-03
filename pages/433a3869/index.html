@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ts-loader は最初に処理したファイルの場所で tsconfig を決める — notes</title>
+<meta name="description" content="configFile を指定しない ts-loader は、エントリが複数あるとビルドのたびに違う tsconfig を使うことがあり、同じコミットから target の違う成果物ができる。">
+<meta name="date" content="2026-11-03">
+<meta name="tags" content="typescript,build">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ts-loader は最初に処理したファイルの場所で tsconfig を決める">
+<meta property="og:description" content="configFile を指定しない ts-loader は、エントリが複数あるとビルドのたびに違う tsconfig を使うことがあり、同じコミットから target の違う成果物ができる。">
+<meta property="og:url" content="https://ktgwshota.github.io/notes/433a3869/">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">build reproducibility</p>
+    <h1>ts-loader は最初に処理したファイルの場所で tsconfig を決める</h1>
+    <p class="lede">ts-loader は <code>configFile</code> を指定しないと、最初に処理した .ts ファイルのディレクトリから tsconfig.json を探し、見つけた設定をそれ以降のすべてのファイルに使います。webpack のエントリが複数あると、どのファイルが先に届くかはビルドのたびに変わります。そのため、同じコミットから <code>target</code> の違う成果物ができることがあります。</p>
+    <div class="premise">
+      <span class="tag">前提</span>
+      <p>webpack + ts-loader で、ディレクトリごとに別の tsconfig.json を置いている構成の話です。ts-loader 9 系のソースで挙動を確認しています。</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <h2>何が起きるか</h2>
+      <p>次のように、2 つのエントリが別々の tsconfig.json の下にあり、1 つの webpack 設定でまとめてビルドしている場合です。</p>
+    </div>
+    <pre><code>.
+├── src/
+│   ├── tsconfig.json     // target: es2017
+│   └── main.ts
+├── tools/
+│   ├── tsconfig.json     // target: es2022
+│   └── index.ts
+└── webpack.config.js</code></pre>
+    <pre><code>module.exports = {
+  entry: {
+    main: './src/main.ts',
+    tool: './tools/index.ts',
+  },
+  module: {
+    rules: [{ test: /\.ts$/, use: 'ts-loader' }],
+  },
+}</code></pre>
+    <div class="matrix-scroll">
+      <div class="matrix">
+        <div class="row head">
+          <span>先に届いたファイル</span>
+          <span class="browser">使われる tsconfig</span>
+          <span class="browser">出力</span>
+        </div>
+        <div class="row">
+          <div class="cause">
+            <span class="name"><code>src/main.ts</code></span>
+            <span class="detail">想定どおりの回。<code>main</code> も <code>tool</code> も es2017 に変換されます。</span>
+          </div>
+          <div class="verdict"><code>src/</code></div>
+          <div class="verdict"><span class="chip is-ok">es2017</span></div>
+        </div>
+        <div class="row">
+          <div class="cause">
+            <span class="name"><code>tools/index.ts</code></span>
+            <span class="detail"><code>main</code> まで es2022 で出力されます。<code>?.</code>、<code>??</code>、クラスフィールドが変換されずに残ります。</span>
+          </div>
+          <div class="verdict"><code>tools/</code></div>
+          <div class="verdict"><span class="chip is-block">es2022</span></div>
+        </div>
+      </div>
+    </div>
+    <p>es2022 の出力は、クラスフィールドを解釈できないブラウザでは SyntaxError になり、ファイル全体が動きません。ビルドは成功し、新しいブラウザでは問題なく動きます。そのため、何回かに 1 回だけ古いブラウザで動かない成果物が出る状態になります。</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>なぜ起きるか</h2>
+      <p>tsconfig の探し方と、見つけた設定のキャッシュの仕方の組み合わせで起きます。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">探索の起点は、そのとき処理しているファイル</span>
+        <span class="detail"><code>configFile</code> がなければ、処理中の .ts ファイルのディレクトリから親へたどって tsconfig.json を探します。webpack.config.js の場所やカレントディレクトリは使われません。</span>
+      </li>
+      <li>
+        <span class="name">見つけた設定は使い回される</span>
+        <span class="detail">ts-loader は TypeScript のコンパイラインスタンスを、webpack のコンパイラと <code>instance</code> オプションの組でキャッシュします。tsconfig を探すのはインスタンスを作るときの 1 回だけなので、最初のファイルで決まった設定がほかのファイルにも適用されます。</span>
+      </li>
+      <li>
+        <span class="name">エントリを処理する順序は決まっていない</span>
+        <span class="detail">webpack は複数のエントリを並行して解決します。ファイルの読み込みやモジュール解決の速さしだいで、どちらが先にローダーに届くかが変わります。</span>
+      </li>
+      <li>
+        <span class="name">相対パスで指定しても揺れる</span>
+        <span class="detail"><code>configFile: './tsconfig.json'</code> のような相対パスは、処理中のファイルのディレクトリを基準に解決されます。起点が揺れるので、指定しない場合と同じことが起きます。</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>気づきにくい理由</h2>
+      <p>ビルドのログにも、手元の動作確認にも出てきにくい問題です。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">エラーにも警告にもならない</span>
+        <span class="detail">どちらの tsconfig も正しい設定なので、ビルドは毎回成功します。違うのは出力の構文だけです。</span>
+      </li>
+      <li>
+        <span class="name">新しいブラウザでは差が出ない</span>
+        <span class="detail">開発者が普段使うブラウザは es2022 を解釈できるので、どちらの成果物でも動きます。</span>
+      </li>
+      <li>
+        <span class="name">同じ環境でも結果が変わる</span>
+        <span class="detail">手元で 1 回ビルドして確かめても、もう片方の出力を見ていないだけかもしれません。CI でも、デプロイのたびにどちらになるかが変わります。</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>どう防ぐか</h2>
+      <p>使う tsconfig をファイルの処理順に依存させないことと、成果物の構文を検査することの 2 つです。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">configFile を絶対パスで指定する</span>
+        <span class="detail"><code>path.resolve(__dirname, ...)</code> で絶対パスにすれば、どのファイルが先に届いても同じ tsconfig が使われます。</span>
+      </li>
+      <li>
+        <span class="name">設定を分けたいなら、インスタンスを分ける</span>
+        <span class="detail">エントリごとに別の tsconfig を使いたい場合は、webpack の設定を配列にしてコンパイラを分けます。1 つの設定のままなら、<code>include</code> でディレクトリを分けたルールを作り、それぞれに別の <code>instance</code> 名と <code>configFile</code> を指定します。</span>
+      </li>
+      <li>
+        <span class="name">成果物の構文レベルを CI で検査する</span>
+        <span class="detail">es-check などで、ビルド後のファイルが想定した ECMAScript のバージョンで構文解析できるかを確かめます。ソースの設定ではなく成果物を見るので、原因がどこにあっても検出できます。</span>
+      </li>
+      <li>
+        <span class="name">同じコミットを何回かビルドして比べる</span>
+        <span class="detail">成果物のハッシュが毎回一致するかを確かめると、こうした揺れがあることに気づけます。ビルドの設定を変えたときの確認として有効です。</span>
+      </li>
+    </ul>
+    <pre><code>const path = require('path')
+
+module.exports = {
+  entry: {
+    main: './src/main.ts',
+    tool: './tools/index.ts',
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        use: {
+          loader: 'ts-loader',
+          options: { configFile: path.resolve(__dirname, 'src/tsconfig.json') },
+        },
+      },
+    ],
+  },
+}</code></pre>
+    <pre><code>npx es-check es2020 './dist/**/*.js'</code></pre>
+  </section>
+
+  <footer>
+    2026-11-03 時点の内容です。ts-loader 9 系の挙動に基づいています。
+  </footer>
+
+</div>
+
+</body>
+</html>

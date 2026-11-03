@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ユーザー操作なしで追加した履歴は戻るボタンで飛ばされる — notes</title>
+<meta name="description" content="ページを開いた直後に pushState で足した履歴は、Chromium の戻るボタンでは飛ばされ、popstate も発火しない。">
+<meta name="date" content="2026-11-03">
+<meta name="tags" content="browser,javascript">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ユーザー操作なしで追加した履歴は戻るボタンで飛ばされる">
+<meta property="og:description" content="ページを開いた直後に pushState で足した履歴は、Chromium の戻るボタンでは飛ばされ、popstate も発火しない。">
+<meta property="og:url" content="https://ktgwshota.github.io/notes/49ec1e6d/">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">history api</p>
+    <h1>ユーザー操作なしで追加した履歴は戻るボタンで飛ばされる</h1>
+    <p class="lede">Chromium には、ユーザーが一度も操作していないページが追加した履歴を、ブラウザの戻るボタンで飛ばす仕組みがあります（history manipulation intervention）。ページを開いた直後に <code>pushState</code> で履歴を足して「戻る」を検知しようとすると、戻るボタンで前のサイトまで戻ってしまい、<code>popstate</code> は発火しません。</p>
+    <div class="premise">
+      <span class="tag">前提</span>
+      <p><code>history.pushState</code> でダミーの履歴を足し、戻る操作を <code>popstate</code> で拾う実装の話です。離脱時のポップアップ、モーダルを戻るで閉じる処理、SPA のルーティングなどが該当します。</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <h2>何が起きるか</h2>
+      <p>ページを開いた時点で履歴を 1 つ足し、戻る操作を検知しようとするコードです。</p>
+    </div>
+    <pre><code>// ページを開いた直後に、戻る操作を拾うための履歴を足す
+history.pushState({ guard: true }, '')
+
+window.addEventListener('popstate', () =&gt; {
+  showLeavePopup()
+})</code></pre>
+    <ol class="steps">
+      <li>
+        <div>
+          <span class="name">a.example から b.example のリンクを踏む</span>
+          <span class="detail">b.example を開いた時点で上のコードが動き、b.example の履歴が 2 つになります。</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <span class="name">b.example で何も操作せずに戻るボタンを押す</span>
+          <span class="detail">スクロールして読んでいるだけで、タップやクリックはしていない状態です。</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <span class="name">b.example の履歴がまとめて飛ばされ、a.example に戻る</span>
+          <span class="detail">b.example は離脱するだけなので <code>popstate</code> は発火せず、ポップアップも出ません。</span>
+        </div>
+      </li>
+    </ol>
+    <p>一度でもページをタップしてから戻るボタンを押すと、想定どおり <code>popstate</code> が発火します。操作するかどうかで結果が変わるので、動作確認では再現しないことがあります。</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>判定のルール</h2>
+      <p>Chromium のドキュメントに書かれている条件です。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">ユーザー操作がないまま履歴を足すと、そのページの履歴がすべて「飛ばす対象」になる</span>
+        <span class="detail"><code>pushState</code> だけでなく、ユーザー操作なしの別ページへの遷移（リダイレクト）も対象です。同じドキュメント内の履歴はすべて同じ扱いになります。</span>
+      </li>
+      <li>
+        <span class="name">一度でもユーザー操作があれば解除される</span>
+        <span class="detail">履歴を足す前でも後でも、ページが一度ユーザー操作を受け取れば、そのページの履歴は飛ばされなくなります。iframe の中での操作も含みます。</span>
+      </li>
+      <li>
+        <span class="name">「ユーザー操作」はクリック・タップ・キー入力</span>
+        <span class="detail">HTML 仕様の user activation のことで、マウスのボタン押下、タップの終わり、キー入力（Esc を除く）などで得られます。スクロールやマウスの移動、ページを読み込んだだけでは得られません。</span>
+      </li>
+      <li>
+        <span class="name">対象は戻る・進むボタンだけ</span>
+        <span class="detail"><code>history.back()</code> などの JS からの操作は影響を受けません。仕様が定めているのは JS の API の挙動だけなので、ボタンの挙動はブラウザが独自に決めています。</span>
+      </li>
+      <li>
+        <span class="name">すべてが飛ばす対象だと、戻るボタンが効かなくなる</span>
+        <span class="detail">Android ではタブが閉じます。デスクトップでは戻るボタンを押しても何も起きず、長押しの履歴一覧から明示的に選ぶ必要があります。</span>
+      </li>
+    </ul>
+    <div class="premise">
+      <span class="tag">補足</span>
+      <p>WebKit（Safari と、iOS 上のすべてのブラウザ）にも、JS がユーザー操作なしに足した履歴を戻る操作で飛ばす仕組みがあります。ただし条件が Chromium と同じかは確認できていないので、ここは確度が低い情報です。Firefox の挙動は確認していません。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>どう防ぐか</h2>
+      <p>履歴はユーザー操作の後に足します。そのうえで、戻る操作を必ず検知できるとは考えずに設計します。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">最初のクリックかキー入力で履歴を足す</span>
+        <span class="detail">user activation を得た後なら、その履歴は飛ばされません。対応ブラウザでは <code>navigator.userActivation.hasBeenActive</code> で、すでに操作があったかを確かめられます。</span>
+      </li>
+      <li>
+        <span class="name">戻る操作を検知できない場合を前提にする</span>
+        <span class="detail">何も操作せずに離脱するユーザーには、履歴を足す機会がありません。離脱時の処理を戻る操作だけに頼らず、<code>visibilitychange</code> など別の手段も検討します。</span>
+      </li>
+      <li>
+        <span class="name">DevTools の Issues パネルで確かめる</span>
+        <span class="detail">Chromium は、履歴が飛ばす対象になったときに Issues パネルへ理由を出します。何も操作せずに戻ったときにここへ出ていれば、この仕組みが原因です。</span>
+      </li>
+    </ul>
+    <pre><code>const insertGuardHistory = () =&gt; {
+  history.pushState({ guard: true }, '')
+}
+
+if (navigator.userActivation?.hasBeenActive) {
+  insertGuardHistory()
+} else {
+  const events = ['click', 'keydown']
+  const handleFirstActivation = (event) =&gt; {
+    // Esc キーは user activation にならない
+    if (event.type === 'keydown' &amp;&amp; event.key === 'Escape') return
+    events.forEach((type) =&gt; window.removeEventListener(type, handleFirstActivation))
+    insertGuardHistory()
+  }
+  events.forEach((type) =&gt; window.addEventListener(type, handleFirstActivation))
+}</code></pre>
+    <p>タッチ操作は <code>pointerdown</code> の時点ではまだ user activation になっていないので、<code>click</code> を使います。</p>
+  </section>
+
+  <footer>
+    2026-11-03 時点の内容です。Chromium の挙動は公式ドキュメント（history_manipulation_intervention.md）に基づいています。
+  </footer>
+
+</div>
+
+</body>
+</html>

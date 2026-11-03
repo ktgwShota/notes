@@ -72,6 +72,7 @@ python3 scripts/new_page.py "ページタイトル" --description "要約" --tag
 | `security` | 脆弱性と対策 |
 | `performance` | 表示速度と実行速度 |
 | `accessibility` | 支援技術への対応 |
+| `build` | バンドラーとビルドの設定 |
 
 ## パーマリンク
 
