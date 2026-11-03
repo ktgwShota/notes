@@ -106,7 +106,7 @@ const b = "谺｡縺ｮ蜃ｦ逅�"
       </li>
       <li>
         <span class="name">ビルド時に非 ASCII 文字をエスケープする</span>
-        <span class="detail">日本語を <code>開始</code> のような形にしておけば、ファイルは ASCII だけになり、どの文字コードで読まれても同じ内容になります。terser なら <code>format.ascii_only: true</code> で有効になります。esbuild は既定で ASCII だけを出力します。</span>
+        <span class="detail">日本語を <code>&#92;u958b&#92;u59cb</code>（「開始」）のような形にしておけば、ファイルは ASCII だけになり、どの文字コードで読まれても同じ内容になります。terser なら <code>format.ascii_only: true</code> で有効になります。esbuild は既定で ASCII だけを出力します。</span>
       </li>
       <li>
         <span class="name">Shift_JIS のページで読み込むテストを置く</span>

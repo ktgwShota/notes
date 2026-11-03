@@ -163,9 +163,11 @@ def build_index(pages: list[dict[str, object]]) -> str:
     if START not in source or END not in source:
         raise SystemExit(f"エラー: {TEMPLATE} に {START} / {END} が見つかりません")
 
+    entries = f"{START}\n{render_entries(pages)}\n{INDENT}{END}"
+    # 本文にバックスラッシュが含まれるので、置換文字列としては解釈させない
     return re.sub(
         re.escape(START) + r".*?" + re.escape(END),
-        f"{START}\n{render_entries(pages)}\n{INDENT}{END}",
+        lambda _: entries,
         source,
         flags=re.DOTALL,
     )
