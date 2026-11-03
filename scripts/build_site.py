@@ -12,6 +12,7 @@
   <meta name="description">  一覧に出す要約
   <meta name="date">         公開日（YYYY-MM-DD）
   <meta name="tags">         カンマ区切りのタグ（任意）
+  <body> のテキスト          絞り込みの対象にする本文
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import html
 import re
 import shutil
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,6 +54,40 @@ def extract_title(source: str) -> str:
     return title[: -len(TITLE_SUFFIX)] if title.endswith(TITLE_SUFFIX) else title
 
 
+class BodyTextParser(HTMLParser):
+    """<body> 内のテキストだけを集める。<script> と <style> の中身は除く。"""
+
+    SKIP_TAGS = {"script", "style"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.in_body = False
+        self.skip_depth = 0
+        self.chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "body":
+            self.in_body = True
+        elif tag in self.SKIP_TAGS:
+            self.skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "body":
+            self.in_body = False
+        elif tag in self.SKIP_TAGS and self.skip_depth > 0:
+            self.skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.in_body and self.skip_depth == 0:
+            self.chunks.append(data)
+
+
+def extract_body_text(source: str) -> str:
+    parser = BodyTextParser()
+    parser.feed(source)
+    return " ".join(" ".join(parser.chunks).split())
+
+
 def collect_pages() -> list[dict[str, object]]:
     pages = []
     for path in sorted(PAGES_DIR.glob("*/index.html")):
@@ -72,6 +108,7 @@ def collect_pages() -> list[dict[str, object]]:
                 "date": date,
                 "summary": extract_meta(source, "description"),
                 "tags": tags,
+                "body": extract_body_text(source),
             }
         )
 
@@ -86,8 +123,10 @@ def render_entries(pages: list[dict[str, object]]) -> str:
     blocks = []
     for page in pages:
         tags: list[str] = page["tags"]  # type: ignore[assignment]
-        # 絞り込みは JS が data 属性だけを見る（タイトル・要約・タグを対象にする）
-        haystack = " ".join([str(page["title"]), str(page["summary"]), *tags]).lower()
+        # 絞り込みは JS が data 属性だけを見る（タイトル・要約・タグ・本文を対象にする）
+        haystack = " ".join(
+            [str(page["title"]), str(page["summary"]), *tags, str(page["body"])]
+        ).lower()
 
         lines = [
             f'{INDENT}<li class="entry" data-search="{html.escape(haystack)}"'
