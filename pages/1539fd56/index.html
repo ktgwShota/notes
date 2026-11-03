@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UTF-8 の JS を Shift_JIS のページで読むとテンプレートリテラルが壊れる — notes</title>
+<meta name="description" content="charset の指定がない外部スクリプトは埋め込み先のページの文字コードで読まれ、日本語の直後のバッククォートが消えて構文エラーになることがある。">
+<meta name="date" content="2026-11-03">
+<meta name="tags" content="javascript,browser,http">
+<meta property="og:type" content="article">
+<meta property="og:title" content="UTF-8 の JS を Shift_JIS のページで読むとテンプレートリテラルが壊れる">
+<meta property="og:description" content="charset の指定がない外部スクリプトは埋め込み先のページの文字コードで読まれ、日本語の直後のバッククォートが消えて構文エラーになることがある。">
+<meta property="og:url" content="https://ktgwshota.github.io/notes/1539fd56/">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">character encoding</p>
+    <h1>UTF-8 の JS を Shift_JIS のページで読むとテンプレートリテラルが壊れる</h1>
+    <p class="lede">配信時に charset を指定していないスクリプトを、ブラウザは埋め込み先のページの文字コードで読みます。UTF-8 の日本語を Shift_JIS として読むと、日本語の直後にあるバッククォートが前の文字に取り込まれて消えることがあります。テンプレートリテラルが閉じなくなるので、スクリプト全体が構文エラーで動かなくなります。</p>
+    <div class="premise">
+      <span class="tag">前提</span>
+      <p>計測タグやウィジェットのように、他人のサイトに <code>&lt;script src&gt;</code> で埋め込まれるスクリプトの話です。埋め込み先のページの文字コードは選べず、Shift_JIS や EUC-JP のページもまだ残っています。</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <h2>何が起きるか</h2>
+      <p>UTF-8 で書いたスクリプトを、Shift_JIS のページから読み込んだ場合です。</p>
+    </div>
+    <pre><code>// UTF-8 で書いたソース
+const a = `処理を開始`
+const b = "次の処理"
+
+// Shift_JIS として読まれたソース
+const a = `蜃ｦ逅�ｒ髢句ｧ義
+const b = "谺｡縺ｮ蜃ｦ逅�"
+// =&gt; SyntaxError: Unexpected end of input</code></pre>
+    <p>閉じのバッククォートが「義」に取り込まれて消えています。テンプレートリテラルはファイルの末尾まで閉じないので、エラーはそのファイル全体に及びます。どこか 1 箇所が壊れるだけで、そのスクリプトは何も実行されません。</p>
+    <p>同じ文字列をシングルクォートで書いた場合は、文字化けはしますが構文エラーにはなりません。</p>
+    <pre><code>const a = '蜃ｦ逅�ｒ髢句ｧ�'   // 化けるが、文字列としては閉じている</code></pre>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>なぜ起きるか</h2>
+      <p>文字コードの決まり方と、Shift_JIS のバイトの区切り方の組み合わせで起きます。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">スクリプトの文字コードはページから引き継がれる</span>
+        <span class="detail">ブラウザは BOM、レスポンスの <code>Content-Type</code> の charset、<code>&lt;script&gt;</code> の <code>charset</code> 属性の順に文字コードを探します。どれもなければ、読み込んだページの文字コードを使います。<code>Content-Type: text/javascript</code> だけでは charset がないので、Shift_JIS のページからは Shift_JIS として読まれます。</span>
+      </li>
+      <li>
+        <span class="name">Shift_JIS の 2 バイト目には ASCII の範囲も含まれる</span>
+        <span class="detail">Shift_JIS の 2 バイト文字は、2 バイト目に 0x40〜0x7E と 0x80〜0xFC を使います。UTF-8 の日本語の末尾のバイトが Shift_JIS の 1 バイト目として読まれると、直後の ASCII 文字が 2 バイト目として取り込まれます。</span>
+      </li>
+      <li>
+        <span class="name">バッククォートは取り込まれる範囲にある</span>
+        <span class="detail">バッククォートは 0x60 です。<code>開始`</code> は UTF-8 で <code>E9 96 8B E5 A7 8B 60</code> になり、最後の <code>8B 60</code> が 1 文字として読まれます。シングルクォート（0x27）とダブルクォート（0x22）はこの範囲の外なので、取り込まれません。</span>
+      </li>
+      <li>
+        <span class="name">壊れるかどうかは前にある文字で変わる</span>
+        <span class="detail">バイトがどこで区切られるかは、それより前のバイト列で決まります。<code>`開始`</code> は壊れますが、<code>`停止`</code> や <code>`送信しました`</code> は壊れません。同じパターンの書き方でも文言しだいで壊れたり壊れなかったりするので、コードを見ただけでは気づけません。</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>取り込まれる ASCII 文字</h2>
+      <p>0x40〜0x7E に入る記号は次のとおりです。日本語の直後に来ると消える可能性があります。</p>
+    </div>
+    <pre><code>@ [ \ ] ^ _ ` { | } ~  と英字（A〜Z, a〜z）</code></pre>
+    <ul class="card-list">
+      <li>
+        <span class="name">構文が壊れる</span>
+        <span class="detail">テンプレートリテラルを閉じるバッククォート。文字列が閉じなくなり、ファイル全体が構文エラーになります。</span>
+      </li>
+      <li>
+        <span class="name">意味が変わる</span>
+        <span class="detail">バックスラッシュ（0x5C）。<code>'あ\n'</code> の <code>\</code> が消えると、改行ではなく <code>n</code> という文字になります。構文エラーにならないので、さらに気づきにくくなります。</span>
+      </li>
+      <li>
+        <span class="name">影響しない</span>
+        <span class="detail"><code>'</code> <code>"</code> <code>$</code> <code>(</code> <code>)</code> <code>,</code> <code>;</code> は範囲の外です。文字列の中身が化けるだけで、コードの構造は保たれます。</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>どう防ぐか</h2>
+      <p>「文字コードを配信側で決める」か「ファイルを ASCII だけにする」のどちらかで、埋め込み先の文字コードの影響を受けなくなります。両方やっておくと確実です。</p>
+    </div>
+    <ul class="card-list">
+      <li>
+        <span class="name">Content-Type に charset を付けて配信する</span>
+        <span class="detail"><code>Content-Type: text/javascript; charset=utf-8</code> にすれば、ページの文字コードに関係なく UTF-8 で読まれます。オブジェクトストレージや CDN から配信している場合、拡張子から推測される Content-Type には charset が付かないことが多いので、アップロード時やレスポンスヘッダーの設定で明示します。</span>
+      </li>
+      <li>
+        <span class="name">ビルド時に非 ASCII 文字をエスケープする</span>
+        <span class="detail">日本語を <code>開始</code> のような形にしておけば、ファイルは ASCII だけになり、どの文字コードで読まれても同じ内容になります。terser なら <code>format.ascii_only: true</code> で有効になります。esbuild は既定で ASCII だけを出力します。</span>
+      </li>
+      <li>
+        <span class="name">Shift_JIS のページで読み込むテストを置く</span>
+        <span class="detail"><code>&lt;meta charset="Shift_JIS"&gt;</code> のページでビルド後のスクリプトを読み込み、エラーが出ないことを確かめます。壊れるかどうかは文言しだいなので、レビューで見つけるのではなく機械的に検出します。</span>
+      </li>
+    </ul>
+    <div class="premise">
+      <span class="tag">補足</span>
+      <p><code>&lt;script charset="utf-8"&gt;</code> でも文字コードは指定できますが、埋め込む側に書いてもらう必要があり、HTML の仕様でも非推奨です。他人のサイトに配るスクリプトでは、配信側で決める方法を使います。テンプレートリテラルを使わないように書き換えても構文エラーは避けられますが、文字化けとバックスラッシュの問題は残ります。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>手元で確かめる</h2>
+      <p>ビルド済みのファイルを Shift_JIS として読み直し、構文として成り立つかを Node.js で確認できます。</p>
+    </div>
+    <pre><code>const fs = require('fs')
+
+const source = fs.readFileSync(process.argv[2])
+const asShiftJis = new TextDecoder('shift_jis').decode(source)
+
+try {
+  new Function(asShiftJis)
+  console.log('Shift_JIS で読んでも構文エラーにならない')
+} catch (error) {
+  console.log('Shift_JIS で読むと壊れる:', error.message)
+}</code></pre>
+  </section>
+
+  <footer>
+    2026-11-03 時点の内容です。
+  </footer>
+
+</div>
+
+</body>
+</html>
